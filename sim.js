@@ -76,6 +76,9 @@ const White = CRGB(MAX_ILLUM,MAX_ILLUM,MAX_ILLUM);
 const Red = CRGB(MAX_ILLUM,0,0);
 const Green = CRGB(0,MAX_ILLUM,0);
 const Blue = CRGB(0,0,MAX_ILLUM);
+const Cyan = CRGB(0,MAX_ILLUM,MAX_ILLUM);
+const Magenta = CRGB(MAX_ILLUM,0,MAX_ILLUM);
+const Yellow = CRGB(MAX_ILLUM,MAX_ILLUM,0);
 
 //let leds = Array(NUM_STEPS * LOGICAL_LEDS_PER_STEP).fill(`rgb(0, 0, 0)`);
 let leds = Array(NUM_STEPS * LOGICAL_LEDS_PER_STEP).fill(Black);
@@ -359,16 +362,14 @@ function animate() {
     }
 
     if (animation_mode === 6) {
-        let frames_per_step = 3;
-        let worm_len = 1;
-        let worm_max_age = 6;
-        let worm_count = 2;
-        let frames_per_spawn = worm_max_age/2*frames_per_step;
-        let warm_color = White;
         max_animation_frame = 64*5;
-
-
-        let back_color = CRGB(MAX_ILLUM/3, MAX_ILLUM/3, MAX_ILLUM/3);
+        let frames_per_step = 3;
+        let worm_len = 3;
+        let worm_max_age = 6 +worm_len-1;
+        let worm_count = 2;
+        let frames_per_spawn = worm_max_age/2 *frames_per_step;
+        let worm_color = Magenta;
+        let back_color = CRGB(worm_color[0]/3, worm_color[1]/3, worm_color[2]/3);
 
         if (animation_frame === 1) {
             for (let i = 0; i < NUM_STEPS; i++) {
@@ -376,78 +377,71 @@ function animate() {
             }
         }
 
-
-        if (animation_frame%frames_per_spawn === 1) {
-            for (let worm_i = 0; worm_i < worm_count; worm_i++) {
-                let point = random(0,LOGICAL_LEDS_PER_STEP-1);
-                let step = random(0, NUM_STEPS-1-worm_max_age/2);
-                fill_point(step, point, warm_color);
-                worms.push({step:step, point:point, animation_frame:animation_frame});
+        if (animation_frame % frames_per_spawn === 1) {
+            for (let i = 0; i < worm_count; i++) {
+                let point;
+                let step;
+                let loop_counter = 0; let d = 0;
+                while (loop_counter <= 50) {
+                    point = random(0, LOGICAL_LEDS_PER_STEP - 1);
+                    if (direction === UP) {
+                        step = random(0, NUM_STEPS - 1 - worm_max_age / 2);
+                    } else {
+                        step = random( worm_max_age / 2, NUM_STEPS - 1);
+                    }
+                    let d_min = 99;
+                    for (let worm_i = 0; worm_i < worms.length; worm_i++) {
+                        let age_i = (animation_frame - worms[worm_i].animation_frame) / frames_per_step;
+                        if (direction === UP) {
+                            d = calc_distance(step, point, worms[worm_i].step + age_i, worms[worm_i].point);
+                        } else {
+                            d = calc_distance(step, point, worms[worm_i].step - age_i, worms[worm_i].point);
+                        }
+                        if (d < d_min) {
+                            d_min = d;
+                        }
+                    }
+                    if (d_min >= 2 || worms.length === 0) {
+                        break;
+                    }
+                    loop_counter++;
+                }
+                worms.push({step: step, point: point, animation_frame: animation_frame}); // spawn
             }
         }
-        if (animation_frame%frames_per_step === 1) {
+        if (animation_frame % frames_per_step === 1) {
             for (let worm_i = 0; worm_i < worms.length; worm_i++) {
-                let age_i = ((animation_frame - worms[worm_i].animation_frame) / frames_per_step);
-                if (age_i >= worm_max_age){
-                    fill_point(worms[worm_i].step + age_i - 1, worms[worm_i].point, back_color);
-                    /*fill_point(worms[worm_i].step + age_i - 2 , worms[worm_i].point, back_color);*/
-                    worms.splice(worm_i, 1);
+                let age_i = (animation_frame - worms[worm_i].animation_frame) / frames_per_step;
+                if (age_i >= worm_max_age) {
+                    for (let a = 0; a < worm_len; a++) {
+                        if (direction === UP) {
+                            fill_point(worms[worm_i].step + age_i - a - 1, worms[worm_i].point, back_color);
+                        } else {
+                            fill_point(worms[worm_i].step - age_i + a + 1, worms[worm_i].point, back_color);
+                        }
+                    }
+                    worms.splice(worm_i, 1); // die
                 }
-                  }
+            }
 
-            for(let worm_i = 0; worm_i < worms.length; worm_i++){
-                let age_i = ((animation_frame - worms[worm_i].animation_frame) / frames_per_step);
-                fill_point(worms[worm_i].step + age_i, worms[worm_i].point, warm_color);
-                console.log('1//      worms[worm_i].step + age_i   ',worms[worm_i].step + age_i,'worms[worm_i].point    ' ,worms[worm_i].point)
-                fill_point(worms[worm_i].step + age_i - worm_len , worms[worm_i].point, back_color);
-                console.log('2//      worms[worm_i].step + age_i - worm_len  ',worms[worm_i].step + age_i,'worms[worm_i].point    ' ,worms[worm_i].point)
-
+            for (let worm_i = 0; worm_i < worms.length; worm_i++) {
+                let age_i = (animation_frame - worms[worm_i].animation_frame) / frames_per_step;
+                if (age_i <= worm_max_age - worm_len) {
+                    if (direction === UP) {
+                        fill_point(worms[worm_i].step + age_i, worms[worm_i].point, worm_color);
+                    } else {
+                        fill_point(worms[worm_i].step - age_i, worms[worm_i].point, worm_color);
+                    }
+                    //console.log('1//      worms[worm_i].step + age_i   ',worms[worm_i].step + age_i,'worms[worm_i].point    ' ,worms[worm_i].point)
+                }
+                if (direction === UP) {
+                    fill_point(worms[worm_i].step + age_i - worm_len, worms[worm_i].point, back_color);
+                } else {
+                    fill_point(worms[worm_i].step - age_i + worm_len, worms[worm_i].point, back_color);
+                }
+                //console.log('2//      worms[worm_i].step + age_i - worm_len  ',worms[worm_i].step + age_i,'worms[worm_i].point    ' ,worms[worm_i].point)
             }
         }
-
-
-
-
-
-      /*  if (check_frames(1,100,4)){
-            for (let i = 0; i < NUM_STEPS; i++) {
-                fill_step(i, CRGB(MAX_ILLUM/3, MAX_ILLUM/3, MAX_ILLUM/3));
-
-            }
-
-                for (let i = 1; i < NUM_STEPS - 9; i++) {
-
-                    if (check_frames(i*speed-speed, i*speed, 4)) {
-                        fill_point(i-1, 2, CRGB(MAX_ILLUM, MAX_ILLUM, MAX_ILLUM));
-                    }
-                    if (check_frames(i*speed-speed, i*speed, 4)) {
-                        fill_point(i-2, 2, CRGB(MAX_ILLUM, MAX_ILLUM, MAX_ILLUM));
-                    }
-                }
-                for (let i = 4; i < NUM_STEPS - 9; i++) {
-
-                    if (check_frames(i*speed-speed, i*speed, 4)) {
-                        fill_point(i+4, 6, CRGB(MAX_ILLUM, MAX_ILLUM, MAX_ILLUM));
-                    }
-                    if (check_frames(i*speed-speed, i*speed, 4)) {
-                        fill_point(i+3, 6, CRGB(MAX_ILLUM, MAX_ILLUM, MAX_ILLUM));
-                    }
-                }
-                for (let i = 2; i < NUM_STEPS - 9; i++) {
-
-                    if (check_frames(i*speed-speed, i*speed, 4)) {
-                        fill_point(i+8, 3, CRGB(MAX_ILLUM, MAX_ILLUM, MAX_ILLUM));
-                    }
-                    if (check_frames(i*speed-speed, i*speed, 4)) {
-                        fill_point(i+7, 3, CRGB(MAX_ILLUM, MAX_ILLUM, MAX_ILLUM));
-                    }
-                }
-
-
-        }*/
-
-
-
 
     }
 
@@ -606,6 +600,9 @@ function show_debug(debug) {
 
 function random(min, max){
     return Math.trunc(Math.random()*(max+1-min)+min)
+}
+function calc_distance(step1, point1, step2, point2){
+    return Math.abs(point2 -point1) + Math.abs(step2 -step1) / 4
 }
 
 
