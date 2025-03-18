@@ -1,0 +1,31 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED simulation</title>
+    <style>
+        canvas { background: grey; display: block; margin: 20px auto; }
+        button { display: block; margin: 10px auto; padding: 10px; font-size: 16px; }
+    </style>
+</head>
+<body bgcolor="grey">
+<button id="sensor6">Move sensor</button>
+<canvas id="ledCanvas"></canvas>
+<button id="sensor5">Move sensor</button>
+
+<select id="animation_mode">
+    <option value="0">Off</option>
+    <option value="1">Mode 1</option>
+    <option value="2">Mode 2</option>
+    <option value="3">Mode 3</option>
+    <option value="4" >Mode 4</option>
+    <option value="5">Demo</option>
+    <option value="6" selected>Mode 6</option>
+</select>
+<div id="pins">0</div>
+<div id="debug"></div>
+
+<script src="sim.js"></script>
+</body>
+</html>
