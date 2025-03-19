@@ -365,18 +365,20 @@ function animate() {
         max_animation_frame = 64*5;
         let frames_per_step = 3;
         let worm_len = 3;
-        let worm_max_age = 6 +worm_len-1;
+        let worm_max_age = 6 + worm_len-1;
         let worm_count = 2;
         let frames_per_spawn = worm_max_age/2 *frames_per_step;
-        let worm_color = Magenta;
+        let worm_color = White;
         let back_color = CRGB(worm_color[0]/3, worm_color[1]/3, worm_color[2]/3);
 
         if (animation_frame === 1) {
+            worms = [];
             for (let i = 0; i < NUM_STEPS; i++) {
                 fill_step(i, back_color);
             }
         }
 
+        // spawn
         if (animation_frame % frames_per_spawn === 1) {
             for (let i = 0; i < worm_count; i++) {
                 let point;
@@ -406,11 +408,15 @@ function animate() {
                     }
                     loop_counter++;
                 }
-                worms.push({step: step, point: point, animation_frame: animation_frame}); // spawn
+                //console.log('loop_counter', worms.length, loop_counter);
+                worms.push({step: step, point: point, animation_frame: animation_frame});
             }
         }
+
         if (animation_frame % frames_per_step === 1) {
-            for (let worm_i = 0; worm_i < worms.length; worm_i++) {
+            // die
+            //for (let worm_i = 0; worm_i < worms.length; worm_i++) {
+            for (let worm_i = worms.length-1; worm_i >= 0; worm_i--) {
                 let age_i = (animation_frame - worms[worm_i].animation_frame) / frames_per_step;
                 if (age_i >= worm_max_age) {
                     for (let a = 0; a < worm_len; a++) {
@@ -420,10 +426,10 @@ function animate() {
                             fill_point(worms[worm_i].step - age_i + a + 1, worms[worm_i].point, back_color);
                         }
                     }
-                    worms.splice(worm_i, 1); // die
+                    worms.splice(worm_i, 1);
                 }
             }
-
+            // draw
             for (let worm_i = 0; worm_i < worms.length; worm_i++) {
                 let age_i = (animation_frame - worms[worm_i].animation_frame) / frames_per_step;
                 if (age_i <= worm_max_age - worm_len) {
@@ -432,14 +438,12 @@ function animate() {
                     } else {
                         fill_point(worms[worm_i].step - age_i, worms[worm_i].point, worm_color);
                     }
-                    //console.log('1//      worms[worm_i].step + age_i   ',worms[worm_i].step + age_i,'worms[worm_i].point    ' ,worms[worm_i].point)
                 }
                 if (direction === UP) {
                     fill_point(worms[worm_i].step + age_i - worm_len, worms[worm_i].point, back_color);
                 } else {
                     fill_point(worms[worm_i].step - age_i + worm_len, worms[worm_i].point, back_color);
                 }
-                //console.log('2//      worms[worm_i].step + age_i - worm_len  ',worms[worm_i].step + age_i,'worms[worm_i].point    ' ,worms[worm_i].point)
             }
         }
 
