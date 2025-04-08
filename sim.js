@@ -2,6 +2,7 @@
 const NUM_STEPS = 16;
 const LEDS_PER_LOGICAL = 3; //WS2811
 const LOGICAL_LEDS_PER_STEP = 9;
+const MAX_POWER_SUPPLY = 60;
 const FPS = 64;
 const FRAME_MS = 1000 / FPS;
 console.log('FRAME_MS:', FRAME_MS);
@@ -22,12 +23,14 @@ canvas.width = WIDTH;
 canvas.height = HEIGHT;
 const SENSOR_TOP = 6;
 const SENSOR_BOTTOM = 5;
+const LOW_PASS = 80;
+let globalMicValue = 0;
 document.getElementById('sensor'+SENSOR_TOP).addEventListener("mousedown", () => digitalWrite(SENSOR_TOP, 1));
 document.getElementById('sensor'+SENSOR_TOP).addEventListener("mouseup", () => digitalWrite(SENSOR_TOP, 0));
 document.getElementById('sensor'+SENSOR_BOTTOM).addEventListener("mousedown", () => digitalWrite(SENSOR_BOTTOM, 1));
 document.getElementById('sensor'+SENSOR_BOTTOM).addEventListener("mouseup", () => digitalWrite(SENSOR_BOTTOM, 0));
 document.getElementById('animation_mode').addEventListener("change", function () {
-    animation_mode = this.value;
+    animation_mode = this.value*1;
     is_start_animation = true;
     console.log("animation_mode:", animation_mode, animation_frame, direction);
 });
@@ -39,8 +42,14 @@ function millis() {
 }
 function pinMode(pin, mode) {
 }
-function div(val, by){
+function intdiv(val, by){
     return (val - val % by) / by;
+}
+function random(min, max){
+    return Math.trunc(Math.random()*(max+1-min)+min)
+}
+function calc_distance(step1, point1, step2, point2){
+    return Math.abs(point2 -point1) + Math.abs(step2 -step1) / 4
 }
 function digitalWrite(pin, state) {
     pins[pin] = state;
@@ -79,6 +88,9 @@ const Blue = CRGB(0,0,MAX_ILLUM);
 const Cyan = CRGB(0,MAX_ILLUM,MAX_ILLUM);
 const Magenta = CRGB(MAX_ILLUM,0,MAX_ILLUM);
 const Yellow = CRGB(MAX_ILLUM,MAX_ILLUM,0);
+const red_watts_per_led = 0.0767;  // 9 Watt per meter (WS2811 30 leds per meter)
+const green_watts_per_led = 0.1116;
+const blue_watts_per_led = 0.1116;
 
 //let leds = Array(NUM_STEPS * LOGICAL_LEDS_PER_STEP).fill(`rgb(0, 0, 0)`);
 let leds = Array(NUM_STEPS * LOGICAL_LEDS_PER_STEP).fill(Black);
@@ -112,10 +124,69 @@ let FastLED = {
     }
 }
 
+function setupMicrophone() {
+    return new Promise((resolve, reject) => {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(stream);
+
+                microphone.connect(analyser);
+
+                analyser.fftSize = 32;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                resolve({ analyser, dataArray, bufferLength });
+            })
+            .catch(function(err) {
+                reject("Error access to mic: " + err);
+            });
+    });
+}
+
+/*function generateBars(number) {
+    const hundreds = Math.floor(Math.abs(number) / 10);
+    return '|'.repeat(hundreds);
+}*/
+
+//returns 0..100
+function getMicrophoneSignalLevel(analyser, dataArray, bufferLength) {
+    function getLevel() {
+        analyser.getByteFrequencyData(dataArray);
+
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+        }
+
+        let micValue = sum / bufferLength;
+        micValue = (micValue - LOW_PASS);
+        if (micValue < 0) {micValue = 0}
+        if (micValue > 200) {micValue = 200}
+        micValue = micValue * (100/(200-LOW_PASS));
+
+        globalMicValue = Math.floor(micValue);
+        //console.log("globalMicValue: ", generateBars(globalMicValue), globalMicValue);
+    }
+
+    setInterval(getLevel, 10);
+}
+
 run();
 
 function run() {
     start_time = Date.now();
+
+    setupMicrophone()
+        .then(({ analyser, dataArray, bufferLength }) => {
+            getMicrophoneSignalLevel(analyser, dataArray, bufferLength);
+        })
+        .catch(err => {
+            console.error(err);
+        });
+
     setup();
     FastLED.show();
     setInterval(loop, FRAME_MS);
@@ -127,9 +198,9 @@ let animation_frame = 0;
 let max_animation_frame = 0;
 let key_frames = 1;
 let key_frame = 0;
-let progress = 0;
-let degress = 1-progress;
-let direction = DOWN;
+let progress = 0;  //0..1
+let degress = 1-progress; //1..0
+let direction = UP;
 let last_millis = millis();
 let center_num = Math.floor(LOGICAL_LEDS_PER_STEP / 2);
 let step_num = 0; // 0..NUM_STEPS-1
@@ -187,14 +258,39 @@ function loop() {
     if (millis() - last_millis >= FRAME_MS-1) {
         last_millis = millis();
         if (animation_frame > 0) {
-            max_animation_frame = 0;
-            animate(animation_frame);
+            animate_loop(animation_frame);
             FastLED.show();
         }
     }
 }
 
-function animate() {
+function calc_power() {
+    let power = 0;
+    let led_num;
+    for (let step_i = 0; step_i < NUM_STEPS; step_i++) {
+        led_num = step_i * LOGICAL_LEDS_PER_STEP;
+        for (let led_i = 0; led_i < LOGICAL_LEDS_PER_STEP; led_i++) {
+            power = power + red_watts_per_led * leds[led_num + led_i][0] / 255;
+            power = power + green_watts_per_led * leds[led_num + led_i][1] / 255;
+            power = power + blue_watts_per_led * leds[led_num + led_i][2] / 255;
+        }
+    }
+    return power;
+}
+function scale_power(scale) {
+    let led_num;
+    for (let step_i = 0; step_i < NUM_STEPS; step_i++) {
+        led_num = step_i * LOGICAL_LEDS_PER_STEP;
+        for (let led_i = 0; led_i < LOGICAL_LEDS_PER_STEP; led_i++) {
+            leds[led_num + led_i][0] = leds[led_num + led_i][0] * scale;
+            leds[led_num + led_i][1] = leds[led_num + led_i][1] * scale;
+            leds[led_num + led_i][2] = leds[led_num + led_i][2] * scale;
+        }
+    }
+}
+
+function animate_loop() {
+    max_animation_frame = 0;
 
     if (animation_mode == 1) {
         if (check_frames(1,32,4)) {
@@ -288,10 +384,8 @@ function animate() {
     if (animation_mode == 4) {
         let seconds = 5;
         let rolls_per_sec = 4; // 1,2,4
-        let times = seconds / rolls_per_sec;
         let back_color = CRGB(MAX_ILLUM/2, 0, 0);
         let frames_for_1step = FPS / rolls_per_sec / NUM_STEPS;
-        //console.log('frames_for_1step',rolls_per_sec, FRAME_MS, frames_for_1step);
 
         if (animation_frame == 1) {
             for (let i = 0; i < NUM_STEPS; i++) {
@@ -327,7 +421,7 @@ function animate() {
 
     }
 
-    if (animation_mode == 5) {
+    /*if (animation_mode == 5) {
         if (check_frames(1,1,4)) {
             draw_step2(0, Red, Blue);
             draw_step2(1, Blue, Green);
@@ -359,16 +453,16 @@ function animate() {
             shift_step(13, -1);
             //show_debug(key_frames + ': ' + key_frame + ' >>> ' + progress*MAX_ILLUM + ' M:' + max_animation_frame);
         }
-    }
+    }*/
 
-    if (animation_mode === 6) {
+    if (animation_mode === 5) {
         max_animation_frame = 64*5;
         let frames_per_step = 3;
         let worm_len = 3;
         let worm_max_age = 6 + worm_len-1;
         let worm_count = 2;
         let frames_per_spawn = worm_max_age/2 *frames_per_step;
-        let worm_color = White;
+        let worm_color = Green;
         let back_color = CRGB(worm_color[0]/3, worm_color[1]/3, worm_color[2]/3);
 
         if (animation_frame === 1) {
@@ -449,7 +543,34 @@ function animate() {
 
     }
 
+    if (animation_mode === 6) {
+        max_animation_frame = 64*60*60;
+        let main_color = Blue;
+        let back_color = CRGB(main_color[0]/6, main_color[1]/6, main_color[2]/6);
+
+        // Преобразуем значение от 0-100 в диапазон от 0-16
+        let fill_steps = Math.round((globalMicValue / 100) * NUM_STEPS) - 1;
+        //console.log(fill_steps);
+
+        for (let i = 0; i < NUM_STEPS; i++) {
+            if (i <= fill_steps) {
+                fill_step(i, main_color);
+            } else {
+                fill_step(i, back_color);
+            }
+        }
+    }
+
     //console.log('key_frames:', key_frames + ': ' + key_frame + ' >>> ' + progress*MAX_ILLUM + ' M:' + max_animation_frame);
+    if (animation_frame % 16 === 1) {
+        let power = calc_power();
+        //console.log("power:" + power);
+        if (power > MAX_POWER_SUPPLY) {
+            let scale = MAX_POWER_SUPPLY / power;
+            scale_power(scale);
+            console.log("power scaled from:" + power);
+        }
+    }
 
     // check animation finish
     animation_frame++;
@@ -468,14 +589,14 @@ function check_frames(frame_from, frame_to, key_frame_interval) {
 
     if (animation_frame >= frame_from && animation_frame <= frame_to) {
         if (animation_frame % key_frame_interval === 1 || frame_from === frame_to) {
-            key_frames = div(frame_to - frame_from, key_frame_interval);
-            key_frame = div(animation_frame - frame_from, key_frame_interval); // 0..key_frames-1
+            key_frames = intdiv(frame_to - frame_from, key_frame_interval);
+            key_frame = intdiv(animation_frame - frame_from, key_frame_interval); // 0..key_frames-1
             if (key_frames < 1) {
                 key_frames = 1;
             }
             progress = key_frame/key_frames; // 0..1
             //console.log('key_frames:', key_frames + ': ' + key_frame + ' >>> ' + progress*255 + ' ' + max_animation_frame);
-            if (progress < 0.05) {progress = 0}
+            if (progress < 0.03) {progress = 0}
             if (progress > 1) {progress = 1}
             degress = 1 - progress;
             return true;
@@ -602,11 +723,6 @@ function show_debug(debug) {
     //document.getElementById('debug').innerText = debug;
 }
 
-function random(min, max){
-    return Math.trunc(Math.random()*(max+1-min)+min)
-}
-function calc_distance(step1, point1, step2, point2){
-    return Math.abs(point2 -point1) + Math.abs(step2 -step1) / 4
-}
+
 
 
