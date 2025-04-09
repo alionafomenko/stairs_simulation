@@ -600,10 +600,10 @@ function animate_loop() {
         let seconds = 3600;
         max_animation_frame = seconds*FPS;
 
-        if (animation_frame % 4 === 1) {
+        if (animation_frame % 2 === 0) {
             let back_color = Black;
             let hue1 = animation_frame % 360; // цикл по кругу оттенков 0–359
-            let hue2 = (animation_frame + 180) % 360;
+            let hue2 = (animation_frame + 90) % 360;
             pal_color1 = hslToCRGB(hue1 / 360, 1, 0.5); // s=1, l=0.5 — яркие чистые цвета
             pal_color2 = hslToCRGB(hue2 / 360, 1, 0.5);
 
