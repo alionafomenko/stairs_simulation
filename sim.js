@@ -23,6 +23,10 @@ canvas.width = WIDTH;
 canvas.height = HEIGHT;
 const SENSOR_TOP = 6;
 const SENSOR_BOTTOM = 5;
+
+const EXP = 1.2;                   // степень усиления сигнала (для более "резкой" работы) (по умолчанию 1.4)
+const MAX_COEF = 1.8;              // коэффициент громкости (максимальное равно срднему * этот коэф) (по умолчанию 1.8)
+const SMOOTH = 0.3;               // коэффициент плавности анимации VU (по умолчанию 0.5)
 const LOW_PASS = 80;
 let globalMicValue = 0;
 document.getElementById('sensor'+SENSOR_TOP).addEventListener("mousedown", () => digitalWrite(SENSOR_TOP, 1));
@@ -151,10 +155,11 @@ function setupMicrophone() {
     return '|'.repeat(hundreds);
 }*/
 
-//returns 0..100
+//fill global variable globalMicValue as 0..100
 function getMicrophoneSignalLevel(analyser, dataArray, bufferLength) {
     function getLevel() {
         analyser.getByteFrequencyData(dataArray);
+        const MAX_PASS = 200;
 
         let sum = 0;
         for (let i = 0; i < bufferLength; i++) {
@@ -164,10 +169,18 @@ function getMicrophoneSignalLevel(analyser, dataArray, bufferLength) {
         let micValue = sum / bufferLength;
         micValue = (micValue - LOW_PASS);
         if (micValue < 0) {micValue = 0}
-        if (micValue > 200) {micValue = 200}
-        micValue = micValue * (100/(200-LOW_PASS));
 
-        globalMicValue = Math.floor(micValue);
+        // возводим в степень (для большей чёткости работы)
+        micValue = Math.pow(micValue, EXP);
+
+        micValue = micValue * (100/(Math.pow(MAX_PASS, EXP)-LOW_PASS));
+
+        if (micValue > MAX_PASS) {micValue = MAX_PASS}
+
+        // фильтр
+        globalMicValue = micValue * SMOOTH + globalMicValue * (1 - SMOOTH);
+
+        globalMicValue = Math.floor(globalMicValue);
         //console.log("globalMicValue: ", generateBars(globalMicValue), globalMicValue);
     }
 
@@ -207,10 +220,12 @@ let step_num = 0; // 0..NUM_STEPS-1
 let point_num = 0;// 0..LOGICAL_LEDS_PER_STEP-1
 let is_start_animation = false;
 let step_on;
-let step_on_prev1;
-let step_on_prev2;
+let step_on_prev1 = -1;
+let step_on_prev2 = -1;
 let first_step;
 let last_step;
+let pal_color1 = Red;
+let pal_color2 = Green;
 let worms = [];
 console.log('center_num:', center_num);
 
@@ -275,7 +290,7 @@ function calc_power() {
             power = power + blue_watts_per_led * leds[led_num + led_i][2] / 255;
         }
     }
-    return power;
+    return Math.round(power*10)/10;
 }
 function scale_power(scale) {
     let led_num;
@@ -456,7 +471,8 @@ function animate_loop() {
     }*/
 
     if (animation_mode === 5) {
-        max_animation_frame = 64*5;
+        let seconds = 5;
+        max_animation_frame = seconds*FPS;
         let frames_per_step = 3;
         let worm_len = 3;
         let worm_max_age = 6 + worm_len-1;
@@ -544,32 +560,124 @@ function animate_loop() {
     }
 
     if (animation_mode === 6) {
-        max_animation_frame = 64*60*60;
-        let main_color = Blue;
-        let back_color = CRGB(main_color[0]/6, main_color[1]/6, main_color[2]/6);
+        //single color with optional picker
+        let seconds = 3600;
+        max_animation_frame = seconds*FPS;
+        let frames_per_pick_down = 8;
+        let main_color = Green;
+        main_color = CRGB(main_color[0]/1.5, main_color[1]/1.5, main_color[2]/1.5);
+        let back_color = Black; //CRGB(main_color[0]/6, main_color[1]/6, main_color[2]/6);
+        let pic_color = Red;
+        let use_pick = true;
 
         // Преобразуем значение от 0-100 в диапазон от 0-16
         let fill_steps = Math.round((globalMicValue / 100) * NUM_STEPS) - 1;
         //console.log(fill_steps);
 
+        if (fill_steps >= step_on_prev1) {
+            step_on_prev1 = fill_steps;
+        } else {
+            if (animation_frame % frames_per_pick_down === 1 && step_on_prev1 >= 0) {
+                step_on_prev1--;
+            }
+        }
+        //console.log(fill_steps, step_on_prev1);
+
+        for (let i = 0; i < NUM_STEPS; i++) {
+            if (i < fill_steps) {
+                fill_step(i, main_color);
+            } else {
+                fill_step(i, back_color);
+            }
+            if (use_pick && i === step_on_prev1) {
+                fill_step(i, pic_color);
+            }
+        }
+    }
+
+    if (animation_mode === 7) {
+        //palette colors
+        let seconds = 3600;
+        max_animation_frame = seconds*FPS;
+
+        let back_color = Black;
+        let hue1 = (animation_frame % 360); // цикл по кругу оттенков 0–359
+        let hue2 = ((animation_frame+120) % 360);
+        pal_color1 = hslToCRGB(hue1 / 360, 1, 0.5); // s=1, l=0.5 — яркие чистые цвета
+        pal_color2 = hslToCRGB(hue2 / 360, 1, 0.5);
+
+        // Преобразуем значение от 0-100 в диапазон от 0-16
+        let fill_steps = Math.round((globalMicValue / 100) * NUM_STEPS) - 1;
+        //console.log(hue1, hue2, pal_color1, pal_color2);
+
         for (let i = 0; i < NUM_STEPS; i++) {
             if (i <= fill_steps) {
-                fill_step(i, main_color);
+                let pal_color_i = CRGB(
+                    Math.round((pal_color1[0] * i / fill_steps + pal_color2[0] * (fill_steps-i) / fill_steps) /2),
+                    Math.round((pal_color1[1] * i / fill_steps + pal_color2[1] * (fill_steps-i) / fill_steps) /2),
+                    Math.round((pal_color1[2] * i / fill_steps + pal_color2[2] * (fill_steps-i) / fill_steps) /2)
+                    );
+
+                fill_step(i, pal_color_i);
             } else {
                 fill_step(i, back_color);
             }
         }
     }
 
+    if (animation_mode === 8) {
+        //single color with optional picker
+        let seconds = 3600;
+        max_animation_frame = seconds*FPS;
+
+        let frames_per_pick_down = 8;
+        let main_color = Blue;
+        main_color = CRGB(main_color[0]/1.5, main_color[1]/1.5, main_color[2]/1.5);
+        let back_color = Black; //CRGB(main_color[0]/6, main_color[1]/6, main_color[2]/6);
+        let pic_color = Red;
+        let use_pick = false;
+
+        // Преобразуем значение от 0-100 в диапазон от 0-9
+        let fill_steps = Math.round((globalMicValue / 100) * LOGICAL_LEDS_PER_STEP) - 1;
+        //console.log(fill_steps);
+
+        if (fill_steps >= step_on_prev1) {
+            step_on_prev1 = fill_steps;
+        } else {
+            if (animation_frame % frames_per_pick_down === 1 && step_on_prev1 >= 0) {
+                step_on_prev1--;
+            }
+        }
+        //console.log(fill_steps, step_on_prev1);
+
+        for (let step_i = 0; step_i < NUM_STEPS; step_i++) {
+            for (let led_i = 0; led_i < LOGICAL_LEDS_PER_STEP; led_i++) {
+                if (led_i < fill_steps) {
+                    leds[step_i * LOGICAL_LEDS_PER_STEP + led_i] = main_color;
+                } else {
+                    leds[step_i * LOGICAL_LEDS_PER_STEP + led_i] = back_color;
+                }
+                if (use_pick && led_i === step_on_prev1) {
+                    leds[step_i * LOGICAL_LEDS_PER_STEP + led_i] = pic_color;
+                }
+            }
+        }
+    }
+
+
+
+
     //console.log('key_frames:', key_frames + ': ' + key_frame + ' >>> ' + progress*MAX_ILLUM + ' M:' + max_animation_frame);
-    if (animation_frame % 16 === 1) {
+    if (animation_frame % 8 === 1) {
         let power = calc_power();
+        let scale = 1;
         //console.log("power:" + power);
         if (power > MAX_POWER_SUPPLY) {
-            let scale = MAX_POWER_SUPPLY / power;
+            scale = MAX_POWER_SUPPLY / power;
             scale_power(scale);
-            console.log("power scaled from:" + power);
+            //console.log("power scaled from:" + power);
         }
+        document.getElementById('power').innerText = 'power: ' + power.toString() + ' W scale:' + scale;
     }
 
     // check animation finish
@@ -723,6 +831,29 @@ function show_debug(debug) {
     //document.getElementById('debug').innerText = debug;
 }
 
+function hslToCRGB(h, s, l) {
+    let r, g, b;
 
+    if (s === 0) {
+        r = g = b = l; // achromatic
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
+    }
+
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
 
 
