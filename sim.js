@@ -600,27 +600,29 @@ function animate_loop() {
         let seconds = 3600;
         max_animation_frame = seconds*FPS;
 
-        let back_color = Black;
-        let hue1 = (animation_frame % 360); // цикл по кругу оттенков 0–359
-        let hue2 = ((animation_frame+120) % 360);
-        pal_color1 = hslToCRGB(hue1 / 360, 1, 0.5); // s=1, l=0.5 — яркие чистые цвета
-        pal_color2 = hslToCRGB(hue2 / 360, 1, 0.5);
+        if (animation_frame % 4 === 1) {
+            let back_color = Black;
+            let hue1 = (animation_frame % 360); // цикл по кругу оттенков 0–359
+            let hue2 = ((animation_frame + 180) % 360);
+            pal_color1 = hslToCRGB(hue1 / 360, 1, 0.5); // s=1, l=0.5 — яркие чистые цвета
+            pal_color2 = hslToCRGB(hue2 / 360, 1, 0.5);
 
-        // Преобразуем значение от 0-100 в диапазон от 0-16
-        let fill_steps = Math.round((globalMicValue / 100) * NUM_STEPS) - 1;
-        //console.log(hue1, hue2, pal_color1, pal_color2);
+            // Преобразуем значение от 0-100 в диапазон от 0-16
+            let fill_steps = Math.round((globalMicValue / 100) * NUM_STEPS) - 1;
+            //console.log(hue1, hue2, pal_color1, pal_color2);
 
-        for (let i = 0; i < NUM_STEPS; i++) {
-            if (i <= fill_steps) {
-                let pal_color_i = CRGB(
-                    Math.round((pal_color1[0] * i / fill_steps + pal_color2[0] * (fill_steps-i) / fill_steps) /2),
-                    Math.round((pal_color1[1] * i / fill_steps + pal_color2[1] * (fill_steps-i) / fill_steps) /2),
-                    Math.round((pal_color1[2] * i / fill_steps + pal_color2[2] * (fill_steps-i) / fill_steps) /2)
+            for (let i = 0; i < NUM_STEPS; i++) {
+                if (i <= fill_steps) {
+                    let pal_color_i = CRGB(
+                        Math.round((pal_color1[0] * i / fill_steps + pal_color2[0] * (fill_steps - i) / fill_steps) / 2),
+                        Math.round((pal_color1[1] * i / fill_steps + pal_color2[1] * (fill_steps - i) / fill_steps) / 2),
+                        Math.round((pal_color1[2] * i / fill_steps + pal_color2[2] * (fill_steps - i) / fill_steps) / 2)
                     );
 
-                fill_step(i, pal_color_i);
-            } else {
-                fill_step(i, back_color);
+                    fill_step(i, pal_color_i);
+                } else {
+                    fill_step(i, back_color);
+                }
             }
         }
     }
