@@ -602,8 +602,8 @@ function animate_loop() {
 
         if (animation_frame % 4 === 1) {
             let back_color = Black;
-            let hue1 = (animation_frame % 360); // цикл по кругу оттенков 0–359
-            let hue2 = ((animation_frame + 180) % 360);
+            let hue1 = animation_frame % 360; // цикл по кругу оттенков 0–359
+            let hue2 = (animation_frame + 180) % 360;
             pal_color1 = hslToCRGB(hue1 / 360, 1, 0.5); // s=1, l=0.5 — яркие чистые цвета
             pal_color2 = hslToCRGB(hue2 / 360, 1, 0.5);
 
